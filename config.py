@@ -17,4 +17,9 @@ AVIF_SPEED = int(os.getenv('AVIF_SPEED', '6'))  # 压缩速度 (0-10)
 WORKER_THREADS = int(os.getenv('WORKER_THREADS', '2'))
 
 # 轮询间隔 (秒)
-POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', '1')) 
+POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', '1'))
+
+# 域名白名单 - 仅允许这些域名的图片进行处理
+# 从环境变量获取，多个域名用逗号分隔，例如：example.com,example.org
+# 为空时表示允许所有域名（不启用白名单）
+DOMAIN_WHITELIST = os.getenv('DOMAIN_WHITELIST', '').split(',') if os.getenv('DOMAIN_WHITELIST') else [] 

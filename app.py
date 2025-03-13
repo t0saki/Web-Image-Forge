@@ -5,8 +5,7 @@ from flask import Flask, request, send_file, jsonify, redirect, url_for
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from models import ImageTask, TaskStatus, init_db
-from worker import ConversionWorker
-from config import DATABASE_URL, WORKER_THREADS
+from config import DATABASE_URL, DOMAIN_WHITELIST
 
 app = Flask(__name__)
 
@@ -27,6 +26,39 @@ def extract_url(path):
         return f"http://{path[1:]}"
     return None
 
+def is_domain_allowed(url):
+    """检查URL的域名是否在白名单中"""
+    if not DOMAIN_WHITELIST:  # 白名单为空，允许所有域名
+        return True
+        
+    try:
+        # 提取域名部分
+        domain_match = re.search(r'^https?://([^/]+)', url)
+        if not domain_match:
+            return False
+            
+        domain = domain_match.group(1)
+        # 移除可能的端口号
+        domain = domain.split(':')[0]
+        
+        # 检查域名或子域名是否在白名单中
+        for allowed_domain in DOMAIN_WHITELIST:
+            allowed_domain = allowed_domain.strip()
+            if not allowed_domain:
+                continue
+                
+            # 完全匹配
+            if domain == allowed_domain:
+                return True
+                
+            # 子域名匹配（确保是子域名而不是部分字符串匹配）
+            if domain.endswith('.' + allowed_domain):
+                return True
+                
+        return False
+    except:
+        return False
+
 
 @app.route('/<path:image_url>')
 def convert_image(image_url):
@@ -35,6 +67,10 @@ def convert_image(image_url):
     if not original_url:
         return jsonify({"error": "Invalid URL format"}), 400
     
+    # 检查域名是否在白名单中
+    if not is_domain_allowed(original_url):
+        return jsonify({"error": "Domain not allowed"}), 403
+    
     # 获取转换格式参数
     output_format = request.args.get('format', 'webp')
     if output_format not in ['webp', 'avif']:
@@ -42,8 +78,8 @@ def convert_image(image_url):
     
     session = Session()
     try:
-        # 计算URL哈希
-        url_hash = ImageTask.url_to_hash(original_url)
+        # 计算URL哈希 (包含格式参数)
+        url_hash = ImageTask.url_to_hash(original_url, output_format)
         
         # 查找或创建任务
         task = session.query(ImageTask).filter_by(
@@ -119,12 +155,12 @@ def serve_optimized_image(url_hash, format):
         response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
         
         # 添加缓存控制头，使响应能被CDN有效缓存
-        # 设置较长的缓存时间，因为图片hash是唯一的，内容变化时URL也会变化
+        # 设置较长的缓存时间，因为图片hash是唯一的（包含URL和格式），内容变化时URL也会变化
         max_age = 31536000  # 1年（秒数）
         response.headers['Cache-Control'] = f'public, max-age={max_age}, immutable'
         response.headers['Expires'] = time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(time.time() + max_age))
         
-        # 添加ETag头，基于图片哈希
+        # 添加ETag头，基于图片哈希（包含URL和格式）
         response.headers['ETag'] = f'"{url_hash}"'
         
         return response

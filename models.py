@@ -29,8 +29,12 @@ class ImageTask(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
     @staticmethod
-    def url_to_hash(url):
-        return hashlib.sha256(url.encode()).hexdigest()
+    def url_to_hash(url, format=None):
+        if format:
+            hash_content = f"{url}:{format}"
+        else:
+            hash_content = url
+        return hashlib.sha256(hash_content.encode()).hexdigest()
     
 
 def init_db():
