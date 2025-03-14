@@ -16,6 +16,10 @@ WEBP_METHOD = int(os.getenv('WEBP_METHOD', '4'))  # 压缩速度 (0-6)
 AVIF_QUALITY = int(os.getenv('AVIF_QUALITY', '65'))
 AVIF_SPEED = int(os.getenv('AVIF_SPEED', '6'))  # 压缩速度 (0-10)
 
+# 图像最大像素数量限制 (宽x高)，超过此值将等比例缩小
+# 默认800万像素 (约3500x2300分辨率)
+MAX_PIXELS = int(os.getenv('MAX_PIXELS', '8294400'))
+
 # 工作线程数量
 WORKER_THREADS = int(os.getenv('WORKER_THREADS', '2'))
 

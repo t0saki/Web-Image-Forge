@@ -3,13 +3,15 @@ import requests
 from wand.image import Image
 import tempfile
 import re
+import math
 from urllib.parse import urlparse
 from config import (
     STORAGE_PATH, 
     WEBP_QUALITY, 
     WEBP_METHOD, 
     AVIF_QUALITY, 
-    AVIF_SPEED
+    AVIF_SPEED,
+    MAX_PIXELS
 )
 
 def ensure_dirs():
@@ -65,6 +67,17 @@ def convert_image(image_path, output_format, task_id):
     output_path = os.path.join(output_dir, f"converted.{output_format}")
     
     with Image(filename=image_path) as img:
+        # 检查图像像素数是否超过限制
+        current_pixels = img.width * img.height
+        if current_pixels > MAX_PIXELS:
+            # 计算缩放比例
+            scale_ratio = math.sqrt(MAX_PIXELS / current_pixels)
+            # 计算新的尺寸
+            new_width = int(img.width * scale_ratio)
+            new_height = int(img.height * scale_ratio)
+            # 执行缩放操作
+            img.resize(new_width, new_height)
+        
         if output_format == 'webp':
             img.format = 'webp'
             img.options['webp:method'] = str(WEBP_METHOD)
