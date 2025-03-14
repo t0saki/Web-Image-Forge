@@ -24,12 +24,21 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+          
+      - name: Generate unique version tag
+        id: generate_tag
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TIMESTAMP=$(date +'%Y%m%d%H%M%S')
+          echo "UNIQUE_TAG=${SHORT_SHA}-${TIMESTAMP}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: tosakiup/web-image-forge:${{ github.event.inputs.tag || 'latest' }}
+          tags: |
+            tosakiup/web-image-forge:${{ github.event.inputs.tag || 'latest' }}
+            tosakiup/web-image-forge:${{ steps.generate_tag.outputs.UNIQUE_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
