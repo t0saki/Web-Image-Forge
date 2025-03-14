@@ -18,7 +18,7 @@ class ImageTask(Base):
     __tablename__ = 'image_tasks'
     
     id = Column(Integer, primary_key=True)
-    original_url = Column(String, unique=True, index=True, nullable=False)
+    original_url = Column(String, index=True, nullable=False)
     original_url_hash = Column(String, unique=True, index=True, nullable=False)
     original_filename = Column(String, nullable=True)
     format = Column(String, nullable=False)  # 'webp' or 'avif'

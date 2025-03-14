@@ -19,23 +19,23 @@
  * 5. Handles requests with or without query parameters
  */
 
-// Configuration parameters
-const CONFIG = {
-    // Target domain to change requests to
-    targetDomain: ENV_TARGET_DOMAIM,
-
-    // Converter service configuration
-    converterService: {
-        baseUrl: ENV_CONVERTER_SERVICE_BASE_URL,
-        apiKey: ENV_API_KEY || '' // API Key for authentication
-    },
-
-    // Cache settings
-    cacheControlMaxAge: 86400 * 30 // 30 days in seconds
-};
-
 export default {
     async fetch(request, env, ctx) {
+        // Configuration parameters using environment variables from env parameter
+        const CONFIG = {
+            // Target domain to change requests to
+            targetDomain: env.ENV_TARGET_DOMAIN,
+
+            // Converter service configuration
+            converterService: {
+                baseUrl: env.ENV_CONVERTER_SERVICE_BASE_URL,
+                apiKey: env.ENV_API_KEY || '' // API Key for authentication
+            },
+
+            // Cache settings
+            cacheControlMaxAge: 86400 * 30 // 30 days in seconds
+        };
+
         const url = new URL(request.url);
         const pathname = url.pathname;
 
@@ -50,7 +50,7 @@ export default {
         // Only process GET requests
         if (request.method !== 'GET') {
             // For non-GET requests, proxy to original content
-            return await fetchAndReturnResponse(modifiedUrl.toString());
+            return await fetchAndReturnResponse(modifiedUrl.toString(), false, null, CONFIG);
         }
 
         // Create the optimizer URL
@@ -58,7 +58,7 @@ export default {
         const optimizerUrl = `${CONFIG.converterService.baseUrl}/${encodedUrl}`;
         
         // Proxy the request to the optimizer with API key and original headers
-        return await fetchAndReturnResponse(optimizerUrl, true, request.headers);
+        return await fetchAndReturnResponse(optimizerUrl, true, request.headers, CONFIG);
     },
 };
 
@@ -67,23 +67,24 @@ export default {
  * @param {string} url - The URL to fetch
  * @param {boolean} useApiKey - Whether to include API key in the request
  * @param {Headers} originalHeaders - Original request headers to forward
+ * @param {Object} config - Configuration object containing settings
  * @returns {Promise<Response>} - The response to return to the client
  */
-async function fetchAndReturnResponse(url, useApiKey = false, originalHeaders = null) {
+async function fetchAndReturnResponse(url, useApiKey = false, originalHeaders = null, config) {
     try {
         // Prepare fetch options
         const fetchOptions = {
             cf: {
                 // Cache using the Cloudflare CDN
-                cacheTtl: CONFIG.cacheControlMaxAge,
+                cacheTtl: config.cacheControlMaxAge,
                 cacheEverything: true,
             },
             headers: {}
         };
         
         // Add API key if needed and available
-        if (useApiKey && CONFIG.converterService.apiKey) {
-            fetchOptions.headers['X-API-Key'] = CONFIG.converterService.apiKey;
+        if (useApiKey && config.converterService.apiKey) {
+            fetchOptions.headers['X-API-Key'] = config.converterService.apiKey;
         }
         
         // Forward important headers from original request
@@ -110,7 +111,7 @@ async function fetchAndReturnResponse(url, useApiKey = false, originalHeaders = 
             const newResponse = new Response(response.body, response);
             
             // Setup cache control headers
-            newResponse.headers.set('Cache-Control', `public, max-age=${CONFIG.cacheControlMaxAge}`);
+            newResponse.headers.set('Cache-Control', `public, max-age=${config.cacheControlMaxAge}`);
             
             // Return the modified response
             return newResponse;

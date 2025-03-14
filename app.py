@@ -104,9 +104,9 @@ def convert_image(image_url):
                 output_format = fmt
                 break
     
-    # 如果无法确定格式，默认使用webp
+    # 如果无法确定格式，直接重定向到原始URL
     if not output_format:
-        output_format = 'webp'
+        return redirect(original_url)
     
     # 验证格式支持
     if output_format not in ['webp', 'avif']:
