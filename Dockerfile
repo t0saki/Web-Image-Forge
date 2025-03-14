@@ -31,4 +31,4 @@ RUN mkdir -p /app/images
 ENV PYTHONUNBUFFERED=1
 
 # Default command (will be overridden in docker-compose)
-CMD ["python", "app.py"] 
+CMD ["python3", "app.py"] 

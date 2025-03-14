@@ -30,6 +30,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: tosakiup/image-optimizer:${{ github.event.inputs.tag || 'latest' }}
+          tags: tosakiup/web-image-forge:${{ github.event.inputs.tag || 'latest' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
