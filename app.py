@@ -5,12 +5,31 @@ from flask import Flask, request, send_file, jsonify, redirect, url_for
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from models import ImageTask, TaskStatus, init_db
-from config import DATABASE_URL, DOMAIN_WHITELIST
+from config import DATABASE_URL, DOMAIN_WHITELIST, API_KEY
+from functools import wraps
 
 app = Flask(__name__)
 
 # 初始化数据库
 init_db()
+
+# API鉴权装饰器
+def require_api_key(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 如果API_KEY未设置，则不进行鉴权
+        if not API_KEY:
+            return f(*args, **kwargs)
+        
+        # 从请求头中获取API KEY
+        api_key = request.headers.get('X-API-Key')
+        
+        # 验证API KEY
+        if not api_key or api_key != API_KEY:
+            return jsonify({"error": "Unauthorized. Invalid or missing API key"}), 401
+            
+        return f(*args, **kwargs)
+    return decorated_function
 
 # 创建数据库连接
 engine = create_engine(DATABASE_URL)
@@ -61,6 +80,7 @@ def is_domain_allowed(url):
 
 
 @app.route('/<path:image_url>')
+@require_api_key
 def convert_image(image_url):
     # 提取原始URL
     original_url = extract_url(f"/{image_url}")
@@ -71,8 +91,24 @@ def convert_image(image_url):
     if not is_domain_allowed(original_url):
         return jsonify({"error": "Domain not allowed"}), 403
     
-    # 获取转换格式参数
-    output_format = request.args.get('format', 'webp')
+    # 获取转换格式参数 - 首先检查查询参数
+    output_format = request.args.get('format')
+    
+    # 如果查询参数中没有指定格式，则检查Accept头部来确定浏览器支持的格式
+    if not output_format:
+        accept_header = request.headers.get('Accept', '')
+        # 按优先级检查支持的格式
+        supported_formats = ['avif', 'webp']
+        for fmt in supported_formats:
+            if f'image/{fmt}' in accept_header:
+                output_format = fmt
+                break
+    
+    # 如果无法确定格式，默认使用webp
+    if not output_format:
+        output_format = 'webp'
+    
+    # 验证格式支持
     if output_format not in ['webp', 'avif']:
         return jsonify({"error": "Unsupported format"}), 400
     
@@ -110,7 +146,8 @@ def convert_image(image_url):
             return redirect(url_for('serve_optimized_image', url_hash=url_hash, format=output_format))
         else:
             session.close()
-            return jsonify({"error": "Image conversion failed"}), 500
+            # 如果转换失败，直接重定向到原始URL
+            return redirect(original_url)
     except Exception as e:
         session.rollback()
         session.close()
@@ -132,6 +169,9 @@ def serve_optimized_image(url_hash, format):
         
         if not task or task.status != TaskStatus.SUCCEED:
             session.close()
+            # 如果任务不存在或转换失败，尝试获取原始URL并重定向
+            if task and task.original_url:
+                return redirect(task.original_url)
             return jsonify({"error": "Image not found or conversion failed"}), 404
         
         # 获取用于Content-Disposition的文件名

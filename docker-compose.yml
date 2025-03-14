@@ -30,6 +30,7 @@ services:
       - AVIF_QUALITY=${AVIF_QUALITY:-65}
       - AVIF_SPEED=${AVIF_SPEED:-6}
       - DOMAIN_WHITELIST=${DOMAIN_WHITELIST:-}
+      - API_KEY=${API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

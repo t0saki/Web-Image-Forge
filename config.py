@@ -6,6 +6,9 @@ DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localho
 # 图片存储路径
 STORAGE_PATH = os.getenv('STORAGE_PATH', './images')
 
+# API鉴权密钥
+API_KEY = os.getenv('API_KEY', '')
+
 # ImageMagick 转换参数
 WEBP_QUALITY = int(os.getenv('WEBP_QUALITY', '80'))
 WEBP_METHOD = int(os.getenv('WEBP_METHOD', '4'))  # 压缩速度 (0-6)

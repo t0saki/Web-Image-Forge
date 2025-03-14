@@ -9,14 +9,14 @@
  */
 
 /**
- * Cloudflare Worker for image optimization redirection
+ * Cloudflare Worker for image optimization proxy
  * 
  * This worker:
  * 1. Intercepts image requests (e.g., b.com/file/c.jpg)
- * 2. Changes domain to d.com (e.g., d.com/file/c.jpg)
- * 3. Checks browser support for avif/webp
- * 4. Redirects to optimization service if supported, otherwise serves original
- * 5. Only processes GET requests without query parameters
+ * 2. Forwards request to optimization service with original Accept header
+ * 3. The optimization service will determine format support
+ * 4. Returns optimized image directly to user without redirects
+ * 5. Handles requests with or without query parameters
  */
 
 // Configuration parameters
@@ -27,11 +27,11 @@ const CONFIG = {
     // Converter service configuration
     converterService: {
         baseUrl: ENV_CONVERTER_SERVICE_BASE_URL,
-        supportedFormats: ['avif', 'webp'] // In priority order
+        apiKey: ENV_API_KEY || '' // API Key for authentication
     },
 
-    // HTTP redirect status code
-    redirectStatusCode: 302
+    // Cache settings
+    cacheControlMaxAge: 86400 * 30 // 30 days in seconds
 };
 
 export default {
@@ -39,7 +39,7 @@ export default {
         const url = new URL(request.url);
         const pathname = url.pathname;
 
-        // Create the modified URL with targetDomain
+        // Create the modified URL with targetDomain for original content
         const modifiedUrl = new URL(`${CONFIG.targetDomain}${pathname}`);
         
         // Copy any original query parameters to the modified URL
@@ -47,39 +47,79 @@ export default {
             modifiedUrl.searchParams.set(key, value);
         }
 
-        // Check if this is a GET request
+        // Only process GET requests
         if (request.method !== 'GET') {
-            return Response.redirect(modifiedUrl.toString(), CONFIG.redirectStatusCode);
+            // For non-GET requests, proxy to original content
+            return await fetchAndReturnResponse(modifiedUrl.toString());
         }
+
+        // Create the optimizer URL
+        const encodedUrl = encodeURIComponent(`${CONFIG.targetDomain}${pathname}`);
+        const optimizerUrl = `${CONFIG.converterService.baseUrl}/${encodedUrl}`;
         
-        // Check if the request has query parameters
-        // If it does, just redirect to the original image with modified domain
-        if (url.search !== '') {
-            return Response.redirect(modifiedUrl.toString(), CONFIG.redirectStatusCode);
-        }
-
-        // Get the Accept header to check browser support
-        const acceptHeader = request.headers.get('Accept') || '';
-
-        // Determine the best supported format based on browser capabilities
-        let format = null;
-        for (const fmt of CONFIG.converterService.supportedFormats) {
-            if (acceptHeader.includes(`image/${fmt}`)) {
-                format = fmt;
-                break;
-            }
-        }
-
-        // If browser supports any of our supported formats, redirect to optimizer
-        if (format) {
-            // URL encode the modified URL to use with the converter
-            const encodedUrl = encodeURIComponent(`${CONFIG.targetDomain}${pathname}`);
-            const optimizerUrl = `${CONFIG.converterService.baseUrl}/${encodedUrl}?format=${format}`;
-
-            return Response.redirect(optimizerUrl, CONFIG.redirectStatusCode);
-        } else {
-            // If no modern format is supported, redirect to the original image with modified domain
-            return Response.redirect(modifiedUrl.toString(), CONFIG.redirectStatusCode);
-        }
+        // Proxy the request to the optimizer with API key and original headers
+        return await fetchAndReturnResponse(optimizerUrl, true, request.headers);
     },
 };
+
+/**
+ * Fetches a resource and returns it as a Response
+ * @param {string} url - The URL to fetch
+ * @param {boolean} useApiKey - Whether to include API key in the request
+ * @param {Headers} originalHeaders - Original request headers to forward
+ * @returns {Promise<Response>} - The response to return to the client
+ */
+async function fetchAndReturnResponse(url, useApiKey = false, originalHeaders = null) {
+    try {
+        // Prepare fetch options
+        const fetchOptions = {
+            cf: {
+                // Cache using the Cloudflare CDN
+                cacheTtl: CONFIG.cacheControlMaxAge,
+                cacheEverything: true,
+            },
+            headers: {}
+        };
+        
+        // Add API key if needed and available
+        if (useApiKey && CONFIG.converterService.apiKey) {
+            fetchOptions.headers['X-API-Key'] = CONFIG.converterService.apiKey;
+        }
+        
+        // Forward important headers from original request
+        if (originalHeaders) {
+            // Forward Accept header for format detection
+            const acceptHeader = originalHeaders.get('Accept');
+            if (acceptHeader) {
+                fetchOptions.headers['Accept'] = acceptHeader;
+            }
+            
+            // Forward User-Agent for potential server-side decisions
+            const userAgent = originalHeaders.get('User-Agent');
+            if (userAgent) {
+                fetchOptions.headers['User-Agent'] = userAgent;
+            }
+        }
+        
+        // Fetch the resource
+        const response = await fetch(url, fetchOptions);
+        
+        // If the response was successful
+        if (response.ok) {
+            // Create a new response with the same body
+            const newResponse = new Response(response.body, response);
+            
+            // Setup cache control headers
+            newResponse.headers.set('Cache-Control', `public, max-age=${CONFIG.cacheControlMaxAge}`);
+            
+            // Return the modified response
+            return newResponse;
+        }
+        
+        // If fetch failed, return the error response
+        return response;
+    } catch (error) {
+        // In case of a network error, return a 502 Bad Gateway
+        return new Response(`Proxy error: ${error.message}`, { status: 502 });
+    }
+}
